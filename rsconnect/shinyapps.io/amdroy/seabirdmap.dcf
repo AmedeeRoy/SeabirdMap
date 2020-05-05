@@ -1,0 +1,10 @@
+name: seabirdmap
+title:
+username:
+account: amdroy
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2200134
+bundleId: 3075814
+url: https://amdroy.shinyapps.io/seabirdmap/
+when: 1588063839.1433
