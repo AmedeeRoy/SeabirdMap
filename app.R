@@ -20,10 +20,10 @@ library(raster)
 library(htmlwidgets)
 library(htmltools)
 
+# General -------------------
 lapply(list.files(path = "./tools", pattern = ".R", full.names = TRUE),  source, 
        print.eval = FALSE, verbose = FALSE)
 
-### General
 pal <- c(    '#1f77b4',  # muted blue
              '#ff7f0e',  # safety orange
              '#2ca02c',  # cooked asparagus green
@@ -41,10 +41,12 @@ cat("Connecting to server...\n")
 drv = RSQLite::SQLite()
 con <- dbConnect(drv, "./data/seabirdbank.db")
 
+# UI -------------------
 ui <- dashboardPage(
+    title = "SeabirdMap",
     # Header --------------------------------------------
     dashboardHeader(title = span(icon("crow"), "MaFalDa"),
-                    
+                
                 dropdownMenu(
                       type = "notifications", 
                       headerText = strong("HELP"), 
@@ -52,23 +54,23 @@ ui <- dashboardPage(
                       badgeStatus = NULL,
                       
                       notificationItem(
-                        text = 'Overview of birds deployment',
-                        icon = icon("binoculars")),
+                        text = 'Overview of selected birds, graphics and metadata',
+                        icon = icon("chart-pie")),
                       notificationItem(
-                        text = 'Observe dynamically birds trip for each fieldwork',
+                        text = 'Map of selected birds trip. Acoustic data and Satellite data available',
+                        icon = icon("map")),
+                      notificationItem(
+                        text = 'Schedule for each fieldwork of selected birds trips',
                         icon = icon("clock")),
                       notificationItem(
-                        text = 'Explore Acoustic data',
-                        icon = icon("fish")),
-                      notificationItem(
-                        text = 'Explore Satellite data',
-                        icon = icon("globe-americas"))
+                        text = 'Explore timeseries for one selected trip',
+                        icon = icon("chart-line"))
                     ),
                     tags$li(
                       a(
-                        strong("ABOUT MaFalDa"),
+                        span(icon("code"),strong("Get Code")),
                         height = 40,
-                        href = "https://amedeeroy.github.io",
+                        href = "https://github.com/AmedeeRoy/SeabirdMap",
                         title = "",
                         target = "_blank"
                       ),
@@ -77,7 +79,6 @@ ui <- dashboardPage(
     ),
     
     # SideBar Menu  --------------------------------------------
-    
     dashboardSidebar(
       width = 300,
       sidebarMenu(
@@ -206,11 +207,18 @@ ui <- dashboardPage(
                  )
         ),
         
-        
         menuItem("TOOLS",
                  tabName = "tools",
                  icon = icon("wrench"),
-                  prettyCheckbox(
+                 
+                 selectizeInput("menu_colour",
+                                span(icon("palette"), "Colour"),
+                                choices = c("Bird" = "id",
+                                            "Species" = "species",
+                                            "Sex" = "sex"),
+                                selected = "id"),
+                 
+                 prettyCheckbox(
                     inputId = "menu_all",
                     label = " Load All Data",
                     status = "primary",
@@ -221,9 +229,6 @@ ui <- dashboardPage(
         br(),
         br(),
         
-        tags$head(
-          tags$style(HTML('#menu_action{background-color:orange}'))
-        ),
         
         withBusyIndicatorUI(
             actionBttn(
@@ -239,19 +244,8 @@ ui <- dashboardPage(
     # Body  --------------------------------------------
     dashboardBody(
       useShinyjs(),
+      tags$head(includeCSS("./www/style.css")),
 
-      tags$head(
-        tags$style(HTML('.btn-primary {
-                              color: white;
-                              height: 45px;
-                              width: 300px;
-                              border-radius: 0;
-                              margin: auto;
-                              position: relative;
-                              font-size: 18px;
-                          }'))
-      ),
-      
       fluidRow(
         column(width = 3,
                bsButton("overview", 
@@ -277,7 +271,7 @@ ui <- dashboardPage(
       
       br(),
       
-      ### OVERVIEW -------------------------
+      ### Overview Panel -------------------------
       fluidRow(
         div(
           id = "overview_panel", 
@@ -342,44 +336,36 @@ ui <- dashboardPage(
         )
       ),
       
-      # tags$style(type = "text/css", "#map_leaflet {height: calc(100vh - 80px) !important;}"),
-      
-      ### MAP -------------------------
+      ###  Map Panel -------------------------
       fluidRow(
       div(
             id = "map_panel",
               
             leafletOutput("map_leaflet", height = "840px"),
-            absolutePanel(id = "map_control", class = "panel panel-default",
+            absolutePanel(id = "controls", class = "panel panel-default",
                           top = 300, right = 50, width = 250, fixed=TRUE,
                           draggable = TRUE, height = "auto",
                           
                           h4(span(icon("fish"), "Acoustic Data")),
-                          dateRangeInput("map_fish_date", "Date :",
-                                         min = "2007-03-11",
-                                         max = "2017-12-09",
-                                         start = "2007-03-11",
-                                         end = "2008-03-11"),
+                          htmlOutput("map_fish_place_select"),
+                          htmlOutput("map_fish_date_select"),
                           actionButton("map_fish_action", "Plot!"),
                           actionButton("map_fish_clear", "Clear!"),
                           br(),
                           h4(span(icon("globe-americas"), "Satellite Data")),
-                          htmlOutput("map_satellite_select"),
-                          dateInput("map_satellite_date", "Date :",
-                                         min = "2007-01-01",
-                                         max = "2019-12-31",
-                                         value = "2007-11-18"),
+                          htmlOutput("map_satellite_fw_select"),
                           prettyRadioButtons("map_satellite_var", "",
-                                             choices = c("bathymetry",
-                                                         "chlorophyll",
-                                                         "sst",
-                                                         "wind")),
+                                             choices = c("bathymetry" = "GEBCO",
+                                                         "chlorophyll" = "GlobColour",
+                                                         "sst" = "MODIS",
+                                                         "wind" = "ASCAT")),
+                          htmlOutput("map_satellite_date_select"),
                           actionButton("map_satellite_action", "Plot!")
             )
         )
       ),
       
-      ### SCHEDULE -------------------------
+      ### Schedule Panel -------------------------
       fluidRow(
         div(
           id = "schedule_panel",
@@ -418,7 +404,7 @@ ui <- dashboardPage(
           )
         )
       ),
-      ### TRIP -------------------------
+      ### Trip panel -------------------------
       fluidRow(
         div(
           id = "trip_panel",
@@ -442,21 +428,11 @@ ui <- dashboardPage(
               ),
               column(
                 width = 6,
-                # box(
-                #   width = 12,
-                #   height = "350px",
-                #   solidHeader = TRUE,
                   plotlyOutput("trip_map", height = "350px")
-                # )
               )
             )
           ),
           
-          # box(
-          #   width = 12,
-          #   height = "450px",
-          #   solidHeader = TRUE,
-            
             dropdownButton(
               htmlOutput("trip_variable_x1"),
               htmlOutput("trip_variable_y1"),
@@ -471,16 +447,15 @@ ui <- dashboardPage(
               tooltip = tooltipOptions(title = "Click to see inputs !")),
             plotlyOutput("trip_plot_2", height = "200px")
             
-          # )
         )
       )
-      ### End Panels -------------------------
     )
   )
 
+### SERVER  ---------------------------------------------------------  
 server <- shinyServer(function(input, output, session) {
   
-  ### Menu Selection  ---------------------------------------------------------    
+  ### Menu Selection  ---------------------------------------------------------  
   output$menu_bill_slider <- renderUI({
     if(is.element("Bill" , input$menu_biometry)){
       sliderInput("menu_bill", "Bill (mm) :", 0, 450, c(10,405))
@@ -529,7 +504,7 @@ server <- shinyServer(function(input, output, session) {
     }
   })
   
-  ### Show correct panel
+  ### Show correct panel  ---------------------------------------------------------  
   # use action buttons as tab selectors
   shinyjs::hide("map_panel")
   shinyjs::hide("schedule_panel")
@@ -560,7 +535,7 @@ server <- shinyServer(function(input, output, session) {
     shinyjs::show("trip_panel")
   })
   
-  #### DATA SELECTION
+  #### Data selection  ---------------------------------------------------------  
   metadata <- dbGetQuery(con,
                      "SELECT
                            id, country, place, year, start, end, band, species, sex, morph,
@@ -824,7 +799,10 @@ server <- shinyServer(function(input, output, session) {
                       WHERE bird.id IN ('", paste(id(), collapse = "', '"), "');"))
    })
    
-
+   col <- eventReactive( input$menu_action, {
+     as.factor(bird()[,input$menu_colour])
+   })
+   
   ### Overview ---------------------------------------------------------    
 
   output$overview_sunburst <- renderPlotly({
@@ -880,10 +858,9 @@ server <- shinyServer(function(input, output, session) {
       data = dbGetQuery(con, paste0(
         "SELECT DISTINCT gps.* , trip   FROM gps
                       WHERE trip IN ('", paste(trip()$id, collapse = "', '"), "');"))
-      position = list(status = "OK", nb = NULL, data = data)
-    position
+    list(data = data)
   })
-
+  
   observeEvent( input$menu_action, {
       output$map_leaflet <-  
             renderLeaflet({
@@ -918,11 +895,16 @@ server <- shinyServer(function(input, output, session) {
               i = 1
               data <- position()$data
               for(t in trip()$id){
+                
+                k = col()[which(trip()$bird[i] == bird()$id)]
+                pop = paste(t, "<br>", k)
+                
+                
                 m <- addPolylines(m, 
                                   lng=data[data$trip==t,"lon"], 
                                   lat=data[data$trip==t,"lat"], 
-                                  color=pal[i],
-                                  popup = t)
+                                  color=pal[k],
+                                  popup = pop)
                 cat(i, " out of ", nrow(trip()), "\n")
                 updateProgressBar(
                   session = session,
@@ -937,11 +919,12 @@ server <- shinyServer(function(input, output, session) {
         })
   })
   
-  # ### Fieldwork ---------------------------------------------------------    
+  ### Fieldwork ---------------------------------------------------------    
   
   output$schedule_menu <- renderUI({
     selectInput("schedule_menu_fw", "Fieldwork :",
-                choices = fieldwork()$id)
+                choices = fieldwork()$id,
+                selected = fieldwork()$id[1])
   })
   
   output$schedule_action <- renderUI({
@@ -1020,11 +1003,15 @@ server <- shinyServer(function(input, output, session) {
       }
       fig <- plot_ly()
       for(i in 1:nrow(dep)){
+        
+        
+        k = col()[which(dep$bird[i] == bird()$id)]
+        
         fig <- add_trace(fig,
                          x = c(dep$start[i], dep$end[i]),
                          y = c(i, i),
                          mode = "lines",
-                         line = list(color = pal[1], width = 5),
+                         line = list(color = pal[k], width = 5),
                          showlegend = F,
                          hoverinfo = "text",
                          type = "scatter",
@@ -1034,11 +1021,13 @@ server <- shinyServer(function(input, output, session) {
       for(j in 1:nrow(trip)){
         i = which((trip$bird[j] == dep$bird) & grepl("GPS$", dep$logger_type))
 
+        k = col()[which(trip$bird[j] == bird()$id)]
+        
         fig <- add_trace(fig,
                          x = c(trip$start[j], trip$end[j]),
                          y = c(i, i),
                          mode = "lines",
-                         line = list(color = pal[1], width = 5),
+                         line = list(color = pal[k], width = 5),
                          hoverinfo = "text",
                          type = "scatter",
                          opacity = 1,
@@ -1094,12 +1083,23 @@ server <- shinyServer(function(input, output, session) {
                            AND datetime >= '", word(input$schedule_anim - minutes(2), 1, 2), "'",
                           " ORDER BY trip, datetime ASC;"))
 
-
       if(nrow(gps)>0){
-        leafletProxy("schedule_map", data = gps) %>%
+        
+          k = sapply(gps$bird, function(b){   k = col()[which(b == bird()$id)]
+                                              if(length(k) == 0){
+                                                return(0)
+                                              } else {
+                                                return(k)
+                                              }
+                                          })
+          
+          pop = paste(gps$trip, "<br>", k)
+          vector_color = ifelse( k == 0, adjustcolor("black", alpha.f = 0.01), pal[k])
+          
+          leafletProxy("schedule_map", data = gps) %>%
           clearShapes() %>%
-          addCircles(~lon, ~lat, popup = ~trip,
-                     color = pal[1]
+          addCircles(gps$lon, gps$lat, popup = pop,
+                     color = as.character(vector_color)
           )
 
       } else {
@@ -1112,8 +1112,7 @@ server <- shinyServer(function(input, output, session) {
     valueBox(nrow(deployment_schedule()), "Number of Deployments", icon = icon("crow"), color = "aqua")
   })
 
-  ### Bird  ---------------------------------------------------------
-  ## Trip Reactive ##
+  ### Trip  ---------------------------------------------------------
 
   output$trip_select_bird <- renderUI({
     selectInput("trip_select_bird_", "Bird :", unique(bird()$id))
@@ -1233,15 +1232,31 @@ server <- shinyServer(function(input, output, session) {
 
   ### Fish  ---------------------------------------------------------
   
+  fish <- dbGetQuery(con, "SELECT * FROM fish")
+  
+  output$map_fish_place_select <- renderUI({
+    selectInput("map_fish_place", "Place",
+                choices = fieldwork()$place)
+  })
+  
+  output$map_fish_date_select <- renderUI({
+    dateRangeInput("map_fish_date", "Date",
+                min = as.Date(min(fish$date[fish$place == input$map_fish_place])),
+                max = as.Date(max(fish$date[fish$place == input$map_fish_place])),
+                start = as.Date(min(fish$date[fish$place == input$map_fish_place])),
+                end = as.Date(max(fish$date[fish$place == input$map_fish_place])))
+  })
+  
   fish_data <- eventReactive( input$map_fish_action, {
     dbGetQuery(con,
                paste0(
                  "SELECT DISTINCT
                             fish.lon,
                             fish.lat,
+                            fish.date,
                           	fish.nasc
                       FROM fish
-                   WHERE fish.place = '", input$menu_place, "'",
+                   WHERE fish.place = '", input$map_fish_place, "'",
                  " AND fish.date >= '", input$map_fish_date[1], "'",
                  " AND fish.date <= '", input$map_fish_date[2], "';")
     )})
@@ -1255,40 +1270,52 @@ server <- shinyServer(function(input, output, session) {
           addCircles(lng = ~lon,
                      lat = ~lat,
                      color = pal(log(1+fish_data()$nasc)),
-                     group = "fish")
+                     popup = paste(fish_data()$date, "<br>", fish_data()$nasc),
+                     group = "fish") %>%
+          addLegend(values = log(1+fish_data()$nasc), pal = pal, title = "log NASC", group = "fish")
+        
       
     } else {
       leafletProxy("map_leaflet") %>%
-        clearGroup("fish")
+        clearGroup("fish") %>%
+        clearControls()
     }
   })
   
   observeEvent(input$map_fish_clear, {
     leafletProxy("map_leaflet") %>%
-      clearGroup("fish")
+      clearGroup("fish") %>%
+      clearControls()
   })
 
 
-  # 
-  # ### Satellite  ---------------------------------------------------------    
-  output$map_satellite_select <- renderUI({
+  
+  ### Satellite  ---------------------------------------------------------    
+  
+  output$map_satellite_fw_select <- renderUI({
     selectInput("map_satellite_fw", "Fieldwork",
                 choices = fieldwork()$id)
   })
   
-  satellite <- eventReactive( input$map_satellite_action, {
+  satellite <-reactive({
                   dbGetQuery(con,
                              paste0("SELECT * from satellite WHERE format!='L2'",
-                                    " AND fieldwork = '", input$map_satellite_fw, "'")
-                  )
+                                    " AND fieldwork = '", input$map_satellite_fw, "'",
+                                    " AND product = '", input$map_satellite_var,"'"))
                 })
+  
+  output$map_satellite_date_select <- renderUI({
+    dateInput("map_satellite_date", "Date",
+              min = min(satellite()$start, na.rm = TRUE),
+              max = max(satellite()$end, na.rm = TRUE),
+              value = min(satellite()$start, na.rm = TRUE))
+  })
 
   # modifying dynamically MAP
   observeEvent(input$map_satellite_action, {
     try({
       path = "./data"
-      if(input$map_satellite_var == "chlorophyll"){
-        # --------------------
+      if(input$map_satellite_var == "GlobColour"){
         # GlobColour
         file = paste(path, "GlobColour", satellite()$file[satellite()$product =="GlobColour"], sep ="/")
         nc <- ncdf4::nc_open(file)
@@ -1300,14 +1327,13 @@ server <- shinyServer(function(input, output, session) {
         pal <- colorNumeric("Greens", values(r), na.color = "transparent")
         
         leafletProxy("map_leaflet") %>% 
-          clearGroup("sst") %>%
-          clearGroup("wind") %>%
-          addRasterImage(r,  project = FALSE, colors = pal, opacity = 0.5, group = "chlorophyll") %>%
-          addLegend(values = values(r), pal = pal, title = "Chlorophyll (mg/m3)", group = "chlorophyll")
+          clearGroup("satellite") %>%
+          clearControls() %>%
+          addRasterImage(r,  project = FALSE, colors = pal, opacity = 0.5, group = "satellite") %>%
+          addLegend(values = values(r), pal = pal, title = "Chlorophyll (mg/m3)", group = "satellite")
       }
       
-      if(input$map_satellite_var == "sst"){
-        # --------------------
+      if(input$map_satellite_var == "MODIS"){
         # MODIS
         file = paste(path, "MODIS", satellite()$file[satellite()$product =="MODIS"], sep ="/")
         nc <- ncdf4::nc_open(file)
@@ -1319,14 +1345,13 @@ server <- shinyServer(function(input, output, session) {
         pal <- colorNumeric("RdBu", values(r), reverse = TRUE, na.color = "transparent")
         
         leafletProxy("map_leaflet") %>% 
-          clearGroup("chlorophyll") %>%
-          clearGroup("wind") %>%
-          addRasterImage(r,  project = FALSE, colors = pal, opacity = 0.5, group = "sst") %>% 
-          addLegend(values = values(r), pal = pal, title = "SST (°C)", group = "sst")
+          clearGroup("satellite") %>%
+          clearControls() %>%
+          addRasterImage(r,  project = FALSE, colors = pal, opacity = 0.5, group = "satellite") %>% 
+          addLegend(values = values(r), pal = pal, title = "SST (°C)", group = "satellite")
       }
       
-      if(input$map_satellite_var == "wind"){
-        # --------------------
+      if(input$map_satellite_var == "ASCAT"){
         # ASCAT
         file = paste(path, "ASCAT", satellite()$file[satellite()$product =="ASCAT"], sep ="/")[1]
         
@@ -1348,12 +1373,12 @@ server <- shinyServer(function(input, output, session) {
         r <- raster(file, band = b, varname = 'wind_speed')
         pal <- colorNumeric("RdBu", values(r), reverse=TRUE, na.color = "transparent")
      
-        leafletProxy("map_leaflet") %>%      
-          clearGroup("chlorophyll") %>%
-          clearGroup("sst") %>%
+        leafletProxy("map_leaflet") %>%  
+          clearGroup("satellite") %>%
+          clearControls() %>%
           registerPlugin(plugin = rotatedMarker ) %>% 
-          addRasterImage(r,  project = FALSE, colors = pal, opacity = 0.5, group = "wind") %>% 
-          addLegend(values = values(r), pal = pal, title = "Wind (m/s)", group = "wind") %>% 
+          addRasterImage(r,  project = FALSE, colors = pal, opacity = 0.5, group = "satellite") %>% 
+          addLegend(values = values(r), pal = pal, title = "Wind (m/s)", group = "satellite") %>% 
           addMarkers(      lng = ~lon,
                            lat = ~lat,
                            icon = wind.icon,
@@ -1363,34 +1388,21 @@ server <- shinyServer(function(input, output, session) {
         
       }
    
-      if(input$map_satellite_var == "bathymetry"){
+      if(input$map_satellite_var == "GEBCO"){
         leafletProxy("map_leaflet") %>%      
-          clearGroup("chlorophyll") %>%
-          clearGroup("sst") %>%
-          clearGroup("wind")
+          clearGroup("satellite") %>%
+          clearControls() %>%
+          clearControls()
       }
-      
     })
   })
-  
-  # output$satellite_map <- renderLeaflet({
-  #   
-
-  #     
-  #     map <-leaflet() %>% addTiles()
-
-  #   }
-  #   
-  #   map
-  # })
-  ### End Tab items  ---------------------------------------------------------    
 })
 
-### Run Shiny App
+### Run Shiny App ---------
 shinyApp(ui = ui, server = server)
 
-### Deployment
+### Deployment ----------
 # rsconnect::setAccountInfo(name='amdroy',
 #                           token='56471F99313DBEF23B2E2ABF6677E785',
 #                           secret='9BW41JbxnNvkbDpMe5HXIofFGpH7mDhGAqyA2uDm')
-# rsconnect::deployApp('/home/amdroy/MEGA/Website/SeabirdMap/')
+# rsconnect::deployApp('/home/amdroy/MEGA/WEBSITE/SeabirdMap/')

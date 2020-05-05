@@ -7,3 +7,14 @@
     position: relative;
     font-size: 18px;
 }
+
+#controls {
+  /* Appearance */
+  background-color: white;
+  padding: 0 10px 10px 10px;
+  cursor: move;
+  opacity: 0.75;
+  zoom: 0.9;
+}
+
+#menu_action{background-color:orange}
